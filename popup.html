@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      width: 400px;
+      min-height: 500px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      margin: 8px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .header .subtitle {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .clear-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 8px 10px;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .clear-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: scale(1.05);
+    }
+
+    .clear-btn:active {
+      transform: scale(0.95);
+    }
+
+    .tabs {
+      display: flex;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #6c757d;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .tab.active {
+      color: #667eea;
+      background: white;
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .tab-content {
+      display: none;
+      padding: 20px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid #e9ecef;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .sites-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .site-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f3f4;
+    }
+
+    .site-item:last-child {
+      border-bottom: none;
+    }
+
+    .site-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: #667eea;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      margin-right: 12px;
+    }
+
+    .site-info {
+      flex: 1;
+    }
+
+    .site-name {
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 2px;
+    }
+
+    .site-time {
+      font-size: 14px;
+      color: #6c757d;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #6c757d;
+    }
+
+    .empty-state .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .chart-container {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+
+    .chart-bar {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .chart-label {
+      width: 80px;
+      font-size: 12px;
+      color: #6c757d;
+    }
+
+    .chart-progress {
+      flex: 1;
+      height: 8px;
+      background: #e9ecef;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 0 8px;
+    }
+
+    .chart-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+    }
+
+    .chart-value {
+      width: 50px;
+      text-align: right;
+      font-size: 12px;
+      color: #333;
+      font-weight: 500;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #6c757d;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #e9ecef;
+      border-top: 2px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Скроллбар */
+    .sites-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sites-list::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+
+    .sites-list::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 3px;
+    }
+
+    .sites-list::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+
+    /* Модальное окно */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(5px);
+    }
+
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      max-width: 400px;
+      width: 90%;
+      animation: modalSlideIn 0.3s ease;
+    }
+
+    @keyframes modalSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .modal-header {
+      padding: 20px 20px 0;
+      text-align: center;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      color: #333;
+      font-size: 18px;
+    }
+
+    .modal-body {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .modal-body p {
+      margin: 0 0 10px;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .warning-text {
+      color: #e74c3c !important;
+      font-weight: 600;
+    }
+
+    .modal-footer {
+      padding: 0 20px 20px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+    }
+
+    .btn-cancel {
+      background: #f8f9fa;
+      color: #6c757d;
+      border: 1px solid #e9ecef;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    .btn-cancel:hover {
+      background: #e9ecef;
+      border-color: #dee2e6;
+    }
+
+    /* Анимации для уведомлений */
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes slideOutRight {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⏱️ Time Tracker</h1>
+      <div class="subtitle">Отслеживание времени на сайтах</div>
+      <button id="clear-data-btn" class="clear-btn" title="Очистить все данные">🗑️</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="today">Сегодня</button>
+      <button class="tab" data-tab="week">Неделя</button>
+      <button class="tab" data-tab="alltime">Все время</button>
+    </div>
+
+    <div id="today-content" class="tab-content active">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="today-total-time">0м</div>
+          <div class="stat-label">Всего времени</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="today-sites-count">0</div>
+          <div class="stat-label">Сайтов</div>
+        </div>
+      </div>
+      <div class="sites-list" id="today-sites"></div>
+    </div>
+
+    <div id="week-content" class="tab-content">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="week-total-time">0м</div>
+          <div class="stat-label">Всего времени</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="week-sites-count">0</div>
+          <div class="stat-label">Сайтов</div>
+        </div>
+      </div>
+      <div class="chart-container">
+        <div id="week-chart"></div>
+      </div>
+      <div class="sites-list" id="week-sites"></div>
+    </div>
+
+    <div id="alltime-content" class="tab-content">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="alltime-total-time">0ч</div>
+          <div class="stat-label">Всего времени</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="alltime-sites-count">0</div>
+          <div class="stat-label">Сайтов</div>
+        </div>
+      </div>
+      <div class="chart-container">
+        <div id="alltime-chart"></div>
+      </div>
+      <div class="sites-list" id="alltime-sites"></div>
+    </div>
+  </div>
+
+  <!-- Модальное окно подтверждения -->
+  <div id="confirm-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚠️ Очистка данных</h3>
+      </div>
+      <div class="modal-body">
+        <p>Вы уверены, что хотите удалить все данные отслеживания времени?</p>
+        <p class="warning-text">Это действие нельзя отменить!</p>
+      </div>
+      <div class="modal-footer">
+        <button id="confirm-clear" class="btn-danger">Удалить все</button>
+        <button id="cancel-clear" class="btn-cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
