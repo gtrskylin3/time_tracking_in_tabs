@@ -1,146 +1,176 @@
-let activeUrl = null;
-let startTime = null;
-let timeSpent = {};
+let activeTabId = null;
+let lastActiveTime = null;
+let currentHost = null;
 
-// Получить ключ для текущего дня
-function getTodayKey() {
-  const today = new Date();
-  return today.toISOString().split('T')[0]; // YYYY-MM-DD
+// Хранилище временных данных для текущей сессии
+let sessionData = {};
+
+// Период сохранения данных (в миллисекундах)
+const SAVE_INTERVAL = 10000; // 10 секунд
+
+// Получить hostname из URL
+function getHost(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname || 'unknown';
+  } catch (e) {
+    return 'unknown';
+  }
 }
 
-// Получить ключ для текущей недели
-function getWeekKey() {
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay());
-  return startOfWeek.toISOString().split('T')[0];
-}
-
-// Сохранить время с разбивкой по дням и неделям
-function saveTime() {
-  if (activeUrl && startTime) {
+// Обновить время для текущего сайта
+function updateTime() {
+  if (activeTabId && lastActiveTime && currentHost && currentHost !== 'unknown') {
     const now = Date.now();
-    const duration = now - startTime;
-    const todayKey = getTodayKey();
-    const weekKey = getWeekKey();
+    const timeSpent = now - lastActiveTime;
     
-    // Загружаем существующие данные
-    chrome.storage.local.get(['timeSpent', 'dailyData', 'weeklyData'], (result) => {
-      const timeSpent = result.timeSpent || {};
-      const dailyData = result.dailyData || {};
-      const weeklyData = result.weeklyData || {};
-      
-      // Обновляем общее время
-      timeSpent[activeUrl] = (timeSpent[activeUrl] || 0) + duration;
-      
-      // Обновляем дневные данные
-      if (!dailyData[todayKey]) dailyData[todayKey] = {};
-      dailyData[todayKey][activeUrl] = (dailyData[todayKey][activeUrl] || 0) + duration;
-      
-      // Обновляем недельные данные
-      if (!weeklyData[weekKey]) weeklyData[weekKey] = {};
-      weeklyData[weekKey][activeUrl] = (weeklyData[weekKey][activeUrl] || 0) + duration;
-      
-      // Сохраняем все данные
-      chrome.storage.local.set({ 
-        timeSpent, 
-        dailyData, 
-        weeklyData,
-        lastUpdate: now
-      });
+    // Обновляем данные сессии
+    sessionData[currentHost] = (sessionData[currentHost] || 0) + timeSpent;
+    
+    lastActiveTime = now;
+  }
+}
+
+// Сохранить данные в chrome.storage.local
+function saveData() {
+  updateTime();
+
+  const today = new Date().toISOString().split('T')[0];
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekKey = weekStart.toISOString().split('T')[0];
+
+  // Получить существующие данные
+  chrome.storage.local.get(['timeSpent', 'dailyData', 'weeklyData'], (result) => {
+    let timeSpent = result.timeSpent || {};
+    let dailyData = result.dailyData || {};
+    let weeklyData = result.weeklyData || {};
+
+    // Обновить данные за все время
+    for (const [host, time] of Object.entries(sessionData)) {
+      timeSpent[host] = (timeSpent[host] || 0) + time;
+    }
+
+    // Обновить данные за день
+    dailyData[today] = dailyData[today] || {};
+    for (const [host, time] of Object.entries(sessionData)) {
+      dailyData[today][host] = (dailyData[today][host] || 0) + time;
+    }
+
+    // Обновить данные за неделю
+    weeklyData[weekKey] = weeklyData[weekKey] || {};
+    for (const [host, time] of Object.entries(sessionData)) {
+      weeklyData[weekKey][host] = (weeklyData[weekKey][host] || 0) + time;
+    }
+
+    // Сохранить данные
+    chrome.storage.local.set({
+      timeSpent,
+      dailyData,
+      weeklyData
+    }, () => {
+      // Очистить sessionData после сохранения
+      sessionData = {};
     });
-    
-    startTime = now;
-  }
-}
 
-// Проверить, является ли URL системным (не должен отслеживаться)
-function isSystemUrl(url) {
-  // Проверяем на валидность URL
-  if (!url || typeof url !== 'string') {
-    return true;
-  }
-  
-  const systemUrls = [
-    'developer.chrome.com',
-    'newtab',
-    'extensions',
-    'chrome://',
-    'chrome-extension://',
-    'moz-extension://',
-    'edge://',
-    'about:',
-    'null',
-    'undefined'
-  ];
-  
-  return systemUrls.some(systemUrl => 
-    url.includes(systemUrl) || url.startsWith(systemUrl)
-  );
-}
-
-function updateActiveTab() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs.length === 0) return;
-    
-    const tab = tabs[0];
-    const url = tab.url;
-    
-    // Пропускаем если URL пустой, null или undefined
-    if (!url || url === 'null' || url === 'undefined') {
-      if (activeUrl) {
-        saveTime();
-        activeUrl = null;
-        startTime = null;
-      }
-      return;
-    }
-    
-    // Пропускаем системные URL
-    if (isSystemUrl(url)) {
-      if (activeUrl) {
-        saveTime();
-        activeUrl = null;
-        startTime = null;
-      }
-      return;
-    }
-    
-    try {
-      const hostname = new URL(url).hostname;
-      if (hostname !== activeUrl) {
-        saveTime();
-        activeUrl = hostname;
-        startTime = Date.now();
-      }
-    } catch (error) {
-      // Если не удается создать URL объект, пропускаем
-      if (activeUrl) {
-        saveTime();
-        activeUrl = null;
-        startTime = null;
-      }
-    }
+    // Очистить старые дневные данные (старше 7 дней)
+    cleanOldDailyData(dailyData);
+    // Очистить старые недельные данные (старше 4 недель)
+    cleanOldWeeklyData(weeklyData);
   });
 }
+
+// Очистка старых дневных данных
+function cleanOldDailyData(dailyData) {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const newDailyData = {};
+  for (const [date, data] of Object.entries(dailyData)) {
+    if (new Date(date) >= sevenDaysAgo) {
+      newDailyData[date] = data;
+    }
+  }
+
+  chrome.storage.local.set({ dailyData: newDailyData });
+}
+
+// Очистка старых недельных данных
+function cleanOldWeeklyData(weeklyData) {
+  const fourWeeksAgo = new Date();
+  fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+
+  const newWeeklyData = {};
+  for (const [week, data] of Object.entries(weeklyData)) {
+    if (new Date(week) >= fourWeeksAgo) {
+      newWeeklyData[week] = data;
+    }
+  }
+
+  chrome.storage.local.set({ weeklyData: newWeeklyData });
+}
+
+// Обработчик переключения вкладок
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  updateTime();
+  activeTabId = activeInfo.tabId;
+
+  chrome.tabs.get(activeTabId, (tab) => {
+    if (tab && tab.url) {
+      currentHost = getHost(tab.url);
+      lastActiveTime = Date.now();
+    } else {
+      currentHost = null;
+      lastActiveTime = null;
+    }
+  });
+});
+
+// Обработчик обновления вкладок
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tabId === activeTabId && changeInfo.url) {
+    updateTime();
+    currentHost = getHost(changeInfo.url);
+    lastActiveTime = Date.now();
+  }
+});
+
+// Обработчик фокуса окна
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    updateTime();
+    activeTabId = null;
+    currentHost = null;
+    lastActiveTime = null;
+  } else {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0) {
+        activeTabId = tabs[0].id;
+        currentHost = getHost(tabs[0].url);
+        lastActiveTime = Date.now();
+      }
+    });
+  }
+});
+
+// Периодическое сохранение данных
+setInterval(saveData, SAVE_INTERVAL);
 
 // Инициализация при запуске
-chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.get(['timeSpent', 'dailyData', 'weeklyData'], (result) => {
-    if (!result.timeSpent) {
-      chrome.storage.local.set({ 
-        timeSpent: {}, 
-        dailyData: {}, 
-        weeklyData: {},
-        lastUpdate: Date.now()
-      });
-    }
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.set({
+    timeSpent: {},
+    dailyData: {},
+    weeklyData: {}
   });
 });
 
-chrome.tabs.onActivated.addListener(updateActiveTab);
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (tab.active && changeInfo.status === 'complete') updateActiveTab();
+// Обработчик закрытия вкладок
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === activeTabId) {
+    updateTime();
+    activeTabId = null;
+    currentHost = null;
+    lastActiveTime = null;
+  }
 });
-chrome.windows.onFocusChanged.addListener(updateActiveTab);
-chrome.runtime.onSuspend.addListener(saveTime);
