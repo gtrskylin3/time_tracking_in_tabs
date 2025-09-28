@@ -5,28 +5,53 @@ let currentHost = null;
 // Хранилище временных данных для текущей сессии
 let sessionData = {};
 
+// Список исключенных хостов
+const EXCLUDED_HOSTS = new Set(['developer.chrome.com']);
+
+// Список исключённых схем и спец. URL
+const EXCLUDED_SCHEMES = ['chrome:', 'edge:', 'about:', 'file:', 'newtab'];
+const EXCLUDED_PATHS = ['chrome://newtab/', 'chrome://extensions/'];
+
 // Период сохранения данных (в миллисекундах)
 const SAVE_INTERVAL = 10000; // 10 секунд
 
 // Получить hostname из URL
 function getHost(url) {
   try {
+    if (!url) return null;
+
+    // Проверяем явные исключённые пути
+    if (EXCLUDED_PATHS.some(path => url.startsWith(path))) {
+      return null;
+    }
+
+    // Проверяем исключённые схемы (chrome://, edge://, file://, about:blank и т.п.)
+    if (EXCLUDED_SCHEMES.some(scheme => url.startsWith(scheme))) {
+      return null;
+    }
+
     const urlObj = new URL(url);
-    return urlObj.hostname || 'unknown';
+
+    // Проверяем исключённые хосты
+    if (EXCLUDED_HOSTS.has(urlObj.hostname)) {
+      return null;
+    }
+
+    return urlObj.hostname || null;
   } catch (e) {
-    return 'unknown';
+    return null;
   }
 }
 
 // Обновить время для текущего сайта
 function updateTime() {
-  if (activeTabId && lastActiveTime && currentHost && currentHost !== 'unknown') {
+  if (activeTabId && lastActiveTime && currentHost) {
     const now = Date.now();
     const timeSpent = now - lastActiveTime;
-    
+
     // Обновляем данные сессии
     sessionData[currentHost] = (sessionData[currentHost] || 0) + timeSpent;
-    
+
     lastActiveTime = now;
   }
 }
@@ -117,8 +142,9 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 
   chrome.tabs.get(activeTabId, (tab) => {
     if (tab && tab.url) {
-      currentHost = getHost(tab.url);
-      lastActiveTime = Date.now();
+      const host = getHost(tab.url);
+      currentHost = host ? host : null;
+      lastActiveTime = currentHost ? Date.now() : null;
     } else {
       currentHost = null;
       lastActiveTime = null;
@@ -130,8 +156,9 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tabId === activeTabId && changeInfo.url) {
     updateTime();
-    currentHost = getHost(changeInfo.url);
-    lastActiveTime = Date.now();
+    const host = getHost(changeInfo.url);
+    currentHost = host ? host : null;
+    lastActiveTime = currentHost ? Date.now() : null;
   }
 });
 
@@ -145,9 +172,14 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   } else {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs.length > 0) {
+        const host = getHost(tabs[0].url);
+        currentHost = host ? host : null;
+        lastActiveTime = currentHost ? Date.now() : null;
         activeTabId = tabs[0].id;
-        currentHost = getHost(tabs[0].url);
-        lastActiveTime = Date.now();
+      } else {
+        activeTabId = null;
+        currentHost = null;
+        lastActiveTime = null;
       }
     });
   }
